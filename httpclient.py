@@ -41,19 +41,24 @@ class HTTPClient(object):
         return None
 
     def get_code(self, data):
-        return None
+        data = data.split("\r\n")[0] 
+        return int(data.split()[1])
 
     def get_headers(self,data):
-        return None
+        return data.split("\r\n\r\n")[0]
 
     def get_body(self, data):
-        return None
+        return data.split("\r\n\r\n")[1]
     
     def sendall(self, data):
         self.socket.sendall(data.encode('utf-8'))
         
     def close(self):
         self.socket.close()
+
+    def parse(self, url):
+        parsed = urllib.parse.urlparse(url)
+        return parsed.port, parsed.scheme, parsed.path, parsed.hostname
 
     # read everything from the socket
     def recvall(self, sock):
@@ -68,13 +73,60 @@ class HTTPClient(object):
         return buffer.decode('utf-8')
 
     def GET(self, url, args=None):
-        code = 500
-        body = ""
+        port, scheme, path, host = self.parse(url)
+
+        if not path:
+            path = "/"
+        
+        if not port:
+            if scheme == "http":
+                port = 80
+            if scheme == "https":
+                port = 443
+
+        self.connect(host, port)
+
+        request = f"GET {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: Python\r\nAccept: */*\r\nAccept-Language:en\r\nConnection: close\r\n\r\n"
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        code = self.get_code(response)
+        body = self.get_body(response)
+        header = self.get_headers(response)
+        print(f"Status Code: {code}\nResponse Header: {header}\nResponse Body: {body}")
+
+        self.close()
+
         return HTTPResponse(code, body)
 
     def POST(self, url, args=None):
-        code = 500
-        body = ""
+        port, scheme, path, host = self.parse(url)
+
+        if not args:
+            args = ""
+
+        encoded = urllib.parse.urlencode(args)
+
+        if not path: 
+            path = "/"
+            
+        if not port:
+            if scheme == "http":
+                port = 80
+            if scheme == "https":
+                port = 443
+
+        self.connect(host, port)
+
+        request = f"POST {path} HTTP/1.1\r\nHost: {host}\r\nUser-Agent: Python\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: {str(len(encoded))}\r\nConnection: close\r\n\r\n{encoded}"
+        self.sendall(request)
+        response = self.recvall(self.socket)
+        code = self.get_code(response)
+        body = self.get_body(response)
+        header = self.get_headers(response)
+        print(f"Status Code: {code}\nResponse Header: {header}\nResponse Body: {body}")
+
+        self.close()
+
         return HTTPResponse(code, body)
 
     def command(self, url, command="GET", args=None):
